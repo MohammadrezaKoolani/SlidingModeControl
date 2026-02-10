@@ -51,8 +51,38 @@ def sinusoidal_path_point(s):
 
     return x_r, y_r, psi_r, kappa
 
+# ==== Random smooth path definition ====
+np.random.seed(1)   # reproducible
+
+N_modes = 5
+A_list = np.random.uniform(1.0, 5.0, N_modes)
+omega_list = np.random.uniform(0.02, 0.08, N_modes)
+phi_list = np.random.uniform(0, 2*np.pi, N_modes)
+
+def random_path_point(s):
+    x_r = s
+
+    # y(x)
+    y_r = 0.0
+    dy_dx = 0.0
+    d2y_dx2 = 0.0
+
+    for A, w, phi in zip(A_list, omega_list, phi_list):
+        y_r += A * np.sin(w * s + phi)
+        dy_dx += A * w * np.cos(w * s + phi)
+        d2y_dx2 += -A * w**2 * np.sin(w * s + phi)
+
+    # heading
+    psi_r = np.arctan(dy_dx)
+
+    # curvature
+    kappa = d2y_dx2 / (1 + dy_dx**2)**(3/2)
+
+    return x_r, y_r, psi_r, kappa
+
+
 # If you want a different path: implement path_point(s) accordingly.
-path_point = sinusoidal_path_point
+path_point = random_path_point
 
 
 # State init
@@ -73,6 +103,27 @@ x_hist, y_hist, psi_hist = [], [], []
 e_y_hist, e_psi_hist, s_hist = [], [], []
 s_ref_hist = []  # store s (path coordinate)
 delta_hist = []
+
+def project_to_path(x, y, s_prev, path_point,
+                    ds=0.5, window=10):
+    """
+    Project (x,y) onto path by local nearest-point search.
+    ds: resolution of s search
+    window: number of steps forward/backward
+    """
+    s_candidates = s_prev + ds * np.arange(-window, window+1)
+    min_dist = np.inf
+    s_best = s_prev
+
+    for s_c in s_candidates:
+        x_r, y_r, _, _ = path_point(s_c)
+        d = (x - x_r)**2 + (y - y_r)**2
+        if d < min_dist:
+            min_dist = d
+            s_best = s_c
+
+    return s_best
+
 
 # initial path coordinate s (start of path)
 s = 0.0
@@ -126,10 +177,14 @@ for i in range(N):
     # s_dot = v * cos(e_psi) / (1 - kappa * e_y)
     denom = 1.0 - kappa_r * e_y
     denom = np.sign(denom) * max(abs(denom), 1e-3)  # guard against small denom
-    s_dot = v * np.cos(e_psi) / denom
-    # Optional: limit s_dot to avoid huge jumps if huge error
-    s_dot = np.clip(s_dot, -10*v, 10*v)
-    s += s_dot * dt
+    # s_dot = v * np.cos(e_psi) / denom
+    # # Optional: limit s_dot to avoid huge jumps if huge error
+    # s_dot = np.clip(s_dot, -10*v, 10*v)
+    # s += s_dot * dt
+    # s = x 
+
+    s = project_to_path(x, y, s, path_point)
+
 
     # store history
     x_hist.append(x); y_hist.append(y); psi_hist.append(psi)

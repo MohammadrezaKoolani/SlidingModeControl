@@ -59,26 +59,26 @@ A_list = np.random.uniform(1.0, 5.0, N_modes)
 omega_list = np.random.uniform(0.02, 0.08, N_modes)
 phi_list = np.random.uniform(0, 2*np.pi, N_modes)
 
-def random_path_point(s):
+def random_path_point(s, curve_gain=3.0):
     x_r = s
 
-    # y(x)
     y_r = 0.0
     dy_dx = 0.0
     d2y_dx2 = 0.0
 
     for A, w, phi in zip(A_list, omega_list, phi_list):
-        y_r += A * np.sin(w * s + phi)
-        dy_dx += A * w * np.cos(w * s + phi)
-        d2y_dx2 += -A * w**2 * np.sin(w * s + phi)
+        # boost high frequencies explicitly
+        w_eff = w * curve_gain
 
-    # heading
+        y_r += A * np.sin(w_eff * s + phi)
+        dy_dx += A * w_eff * np.cos(w_eff * s + phi)
+        d2y_dx2 += -A * w_eff**2 * np.sin(w_eff * s + phi)
+
     psi_r = np.arctan(dy_dx)
-
-    # curvature
     kappa = d2y_dx2 / (1 + dy_dx**2)**(3/2)
 
     return x_r, y_r, psi_r, kappa
+
 
 
 # If you want a different path: implement path_point(s) accordingly.
@@ -91,9 +91,9 @@ x, y, psi, _ = path_point(s)
 
 # Sliding mode / super-twisting parameters (tune these)
 lambda_y = 0.6
-phi = 0.3
-k1 = 0.4
-k2 = 0.3
+phi = 0.2
+k1 = 0.5
+k2 = 0.5
 
 def sat(x):
     return np.clip(x, -1.0, 1.0)

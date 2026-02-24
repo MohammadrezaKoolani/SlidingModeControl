@@ -85,7 +85,3 @@ n_pred = 14
 v = 5.0
 ```
 
-## Reference
-Sliding Mode Control for Robust Path Tracking of Automated Vehicles in Rural Environments
-IEEE Open Journal of Vehicular Technology, 2024
-https://ieeexplore.ieee.org/document/10669799

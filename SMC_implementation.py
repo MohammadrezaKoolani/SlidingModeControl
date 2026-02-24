@@ -208,39 +208,55 @@ for i in range(N):
     
     # State: [ey, dey, epsi, depsi]
     x_pred = np.array([e_y, de_y, e_psi, de_psi])
-    
-    # Pre-calculate matrix terms (Linearized around reference)
-    # Ref steering for curvature
-    delta_r = np.arctan(L * kappa_r)
-    cos_dr_sq_inv = 1.0 / (np.cos(delta_r)**2 + 1e-6)
-    
-    # Construct Continuous Matrix A (stabilized) and B
-    # See kinematic.cpp :: calculateDiscreteMatrix
-    A_mat = np.zeros((4,4))
-    A_mat[0, 2] = v
-    A_mat[1, 3] = v
-    
-    # Stability injection (Crucial part of the paper's robustness)
-    gain_stab = -max(2.0, 0.5 * v)
-    A_mat[0, 0] = gain_stab
-    A_mat[1, 1] = gain_stab
-    A_mat[2, 2] = -2.0
-    A_mat[3, 3] = -2.0
-    
-    B_mat = np.zeros((4,1))
-    B_mat[2, 0] = v / L * cos_dr_sq_inv
-    
-    W_mat = np.zeros(4)
-    W_mat[2] = -v / L * cos_dr_sq_inv * delta_r
 
-    # Discretize (Euler for simplicity in this loop)
-    # x_{k+1} = x_k + (A x_k + B u + W) * dt
-    # Assumption: Steering stays constant during prediction horizon
-    u_vec = np.array([u_prev]) 
-    
+    # predict global pose
+    x_pred_global = x
+    y_pred_global = y
+    psi_pred_global = psi
+    s_pred = s
+
+    u_vec = np.array([u_prev])
+
     for _ in range(n_pred):
-        x_dot = A_mat @ x_pred + B_mat @ u_vec + W_mat
-        x_pred += x_dot * dt
+        # 1) project predicted vehicle to the path
+        s_pred = project_to_path(x_pred_global, y_pred_global, s_pred, path_point)
+
+        #2) Get refrence at predicteed path
+        x_r_p, y_r_p, psi_r_p, kappa_r_p = path_point(s_pred)
+
+        # 3) Compute refrence steering 
+        delta_r_p = np.arctan(L * kappa_r_p)
+
+        # 4) compute phi
+        phi_p = v / (L * (np.cos(delta_r_p)**2 + 1e-6))
+
+        #5) Build A Mat
+        A_mat = np.zeros((4, 4))
+        A_mat[0, 2] = v
+        A_mat[1, 3] = v
+        
+        Ky = v
+        Kpsi = 1.0
+        A_mat[0, 0] = -Ky
+        A_mat[1, 1] = -Ky
+        A_mat[2, 2] = -Kpsi
+        A_mat[3, 3] = -Kpsi
+
+        # 6) Build B and W
+        B_mat = np.zeros((4, 1))
+        B_mat[2, 0] = phi_p
+        
+        W_mat = np.zeros(4)
+        W_mat[2] = -phi_p * delta_r_p
+
+        # 7) Propagate error state
+        x_dot_pred = A_mat @ x_pred + B_mat @ u_vec + W_mat
+        x_pred = x_pred + x_dot_pred * dt
+
+        # 8) propagate golbal vehicle pose
+        x_pred_global += v * np.cos(psi_pred_global) * dt
+        y_pred_global += v * np.sin(psi_pred_global) * dt
+        psi_pred_global += (v/L) * np.tan(u_prev) * dt
 
     # Extract predicted errors
     ey_n = x_pred[0]
@@ -257,21 +273,23 @@ for i in range(N):
     
     # --- Surface 1: Lateral ---
     s_lat = edy_n + lambda_gain * ey_n
-    sigma_lat = np.tanh(s_lat / phi_val)
-    
+
     # Adaptive Integral (Eq 7c)
     # dot_u2 = -beta * v * sigma
-    u2_lat += (-beta * v * sigma_lat * dt)
+    u2_lat += (-beta * v * s_lat * dt)
     
     # Switching Term (Eq 7a)
-    u1_lat = -alpha * np.sqrt(np.abs(sigma_lat)) * sigma_lat + u2_lat
+    u1_lat = -alpha * np.sqrt(np.abs(s_lat)) * np.sign(s_lat)
     
+    delta_lat = u1_lat + u2_lat
+
     # --- Surface 2: Yaw ---
     s_yaw = edpsi_n + lambda_gain * epsi_n
-    sigma_yaw = np.tanh(s_yaw / phi_val)
     
-    u2_yaw += (-beta * v * sigma_yaw * dt)
-    u1_yaw = -alpha * np.sqrt(np.abs(sigma_yaw)) * sigma_yaw + u2_yaw
+    u2_yaw += (-beta * v * s_yaw * dt)
+    u1_yaw = -alpha * np.sqrt(np.abs(s_yaw)) * np.sign(s_yaw)
+
+    delta_yaw = u1_yaw + u2_yaw
     
     # Store surfaces for plotting
     s_lat_hist.append(s_lat)
@@ -284,7 +302,7 @@ for i in range(N):
     delta_ff = np.arctan(L * kappa_r)
     
     # Total Command
-    delta_raw = u1_lat + u1_yaw + delta_ff
+    delta_raw = delta_lat + delta_yaw + delta_ff
     
     # Rate Limiting
     delta_rate = (delta_raw - u_prev) / dt
@@ -322,12 +340,19 @@ for i in range(N):
 # 6. PLOTTING
 # ==========================================
 # create reference curve
-s_vals = np.linspace(0, s, 1000)
+s_vals = np.linspace(0, path_point.s_values[-1], 2000)
 x_ref = np.zeros_like(s_vals); y_ref = np.zeros_like(s_vals)
 for k, ss in enumerate(s_vals):
     xr, yr, _, _ = path_point(ss)
     x_ref[k] = xr
     y_ref[k] = yr
+
+# Calculating RMSE_ERROR
+rms_ey = np.sqrt(np.mean(np.array(e_y_hist)**2))
+rms_epsi = np.sqrt(np.mean(np.array(e_psi_hist)**2))
+
+print("RMS Lateral Error:", rms_ey)
+print("RMS Heading Error:", rms_epsi)
 
 t = np.arange(len(e_y_hist)) * dt
 step = 30
@@ -370,6 +395,7 @@ plt.show()
 plt.figure(figsize=(10,6))
 plt.subplot(2,1,1)
 plt.plot(t[::step], s_lat_hist[::step], 'r', linewidth=1.5)
+plt.axhline(0, color='black', linewidth=1)
 plt.ylabel('Lateral Surface $s_y$')
 plt.grid(True)
 plt.title('Sliding Surfaces (Should converge to 0)')

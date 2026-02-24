@@ -73,5 +73,4 @@ The script generates:
 - Steering angle history
 - Sliding surface convergence
 
--
 

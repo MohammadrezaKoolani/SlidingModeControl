@@ -73,15 +73,5 @@ The script generates:
 - Steering angle history
 - Sliding surface convergence
 
----
-
-## Key Parameters
-
-```python
-lambda_gain = 24.0
-alpha = 0.8
-beta = 0.04
-n_pred = 14
-v = 5.0
-```
+-
 

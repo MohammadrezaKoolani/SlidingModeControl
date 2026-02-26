@@ -11,8 +11,8 @@ t = np.arange(0, T + dt, dt)
 
 
 # Initial Condotion 
-y = np.zeros(N)
-vy = np.zeros(N)
+y = np.zeros(N)   # Lateral Error (e)
+vy = np.zeros(N)  # y_dot
 psi = np.zeros(N)
 r = np.zeros(N)
 
@@ -32,7 +32,7 @@ Lr = 1.513 # m
 Vx = 13.5 # m/s
 
 # Control Parameters
-lam = 1.0
+lam = 8.0
 alpha = 0.002
 beta = 0.0001
 
@@ -46,12 +46,12 @@ for k in range(N - 1):
 
     # phi(t, s)  eq12
     phi = (-(Cf + Cr)/(m * Vx)) * vy[k] \
-            - ((Lf * Cf - Lr * Cr)/(m * Vx)) * r[k] \
-            - (Vx**2 / R) \
-            + lam * vy[k]
+          - ((Lf * Cf - Lr * Cr)/(m * Vx)) * r[k] \
+          - (Vx**2 / R) \
+          + lam * vy[k]
     
     # varphi eq. 12
-    varphi = Cf / m
+    # varphi = Cf / m
 
     # Equivalent Control eq.14
     delta_eq = -(m / Cf) * phi
@@ -62,7 +62,7 @@ for k in range(N - 1):
     u2 = u2 + dt * du2
 
     delta_st = u1 + u2
-    delta = delta_st + delta_eq
+    delta = delta_st + delta_eq # Eq 15
 
 
     # Vehicle dynamics (Eq. 1)
@@ -73,6 +73,7 @@ for k in range(N - 1):
              + (Cf / m) * delta
 
     # ψ (which is r_dot)
+
     r_dot = (-(Lf * Cf - Lr * Cr)/(Iz * Vx)) * vy[k] \
             - ((Lf**2 * Cf + Lr**2 * Cr)/(Iz * Vx)) * r[k] \
             + (Lf * Cf / Iz) * delta
